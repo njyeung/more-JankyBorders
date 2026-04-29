@@ -1,10 +1,18 @@
 #pragma once
 #include <CoreGraphics/CoreGraphics.h>
+#include <math.h>
+
+#define GRADIENT_MAX_STOPS 16
+
+struct gradient_stop {
+  uint32_t color;
+  float position;
+};
 
 struct gradient {
-  enum { TL_TO_BR, TR_TO_BL } direction;
-  uint32_t color1;
-  uint32_t color2;
+  float angle;
+  struct gradient_stop stops[GRADIENT_MAX_STOPS];
+  uint8_t n_stops;
 };
 
 static inline void colors_from_hex(uint32_t hex, float* a, float* r, float* g, float* b) {
@@ -13,6 +21,20 @@ static inline void colors_from_hex(uint32_t hex, float* a, float* r, float* g, f
   *g = ((hex >> 8) & 0xff) / 255.f;
   *b = ((hex >> 0) & 0xff) / 255.f;
 }
+
+// TODO: implement RGB <-> HSV conversion
+static inline void rgb_to_hsv(float r, float g, float b, float* h, float* s, float* v) {}
+static inline void hsv_to_rgb(float h, float s, float v, float* r, float* g, float* b) {}
+
+// TODO: implement RGB <-> HSL conversion
+static inline void rgb_to_hsl(float r, float g, float b, float* h, float* s, float* l) {}
+static inline void hsl_to_rgb(float h, float s, float l, float* r, float* g, float* b) {}
+
+// TODO: implement gradient angle <-> Points conversion
+// angle=0 == left to right; 
+// angle=90 == bottom to top. 
+// Points are in normalized [0,1]^2 space. Caller applies CGAffineTransform for the actual rect size. 
+static inline void gradient_angle_to_points(float angle_deg, CGPoint dir[2]) {}
 
 static inline void drawing_set_fill(CGContextRef context, uint32_t color) {
   float a,r,g,b;
@@ -97,26 +119,20 @@ static inline void drawing_draw_filled_path(CGContextRef context, CGPathRef path
 }
 
 static inline CGGradientRef drawing_create_gradient(struct gradient* gradient, CGAffineTransform trans, CGPoint direction[2]) {
-  float a1, a2, r1, r2, g1, g2, b1, b2;
-  colors_from_hex(gradient->color1, &a1, &r1, &g1, &b1);
-  colors_from_hex(gradient->color2, &a2, &r2, &g2, &b2);
-  CGColorRef c[] = { CGColorCreateSRGB(r1, g1, b1, a1),
-                     CGColorCreateSRGB(r2, g2, b2, a2) };
-  CFArrayRef cfc = CFArrayCreate(NULL,
-                                 (const void **)c,
-                                 2,
-                                 &kCFTypeArrayCallBacks);
-  CGGradientRef result = CGGradientCreateWithColors(NULL, cfc, NULL);
-  CFRelease(cfc);
-  CGColorRelease(c[0]);
-  CGColorRelease(c[1]);
-  if (gradient->direction == TR_TO_BL) {
-    direction[0] = CGPointMake(1, 1);
-    direction[1] = CGPointZero;
-  } else if (gradient->direction == TL_TO_BR) {
-    direction[0] = CGPointMake(0, 1);
-    direction[1] = CGPointMake(1, 0);
+  CGColorRef colors[GRADIENT_MAX_STOPS];
+  CGFloat    positions[GRADIENT_MAX_STOPS];
+  for (int i = 0; i < gradient->n_stops; i++) {
+    float a, r, g, b;
+    colors_from_hex(gradient->stops[i].color, &a, &r, &g, &b);
+    colors[i]    = CGColorCreateSRGB(r, g, b, a);
+    positions[i] = gradient->stops[i].position;
   }
+  CFArrayRef    cfc    = CFArrayCreate(NULL, (const void**)colors, gradient->n_stops, &kCFTypeArrayCallBacks);
+  CGGradientRef result = CGGradientCreateWithColors(NULL, cfc, positions);
+  CFRelease(cfc);
+  for (int i = 0; i < gradient->n_stops; i++) CGColorRelease(colors[i]);
+
+  gradient_angle_to_points(gradient->angle, direction);
   direction[0] = CGPointApplyAffineTransform(direction[0], trans);
   direction[1] = CGPointApplyAffineTransform(direction[1], trans);
   return result;

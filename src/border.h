@@ -21,11 +21,8 @@
 #endif
 
 struct color_style {
-  enum { COLOR_STYLE_GRADIENT, COLOR_STYLE_SOLID, COLOR_STYLE_GLOW } stype;
-  union {
-    uint32_t color;
-    struct gradient gradient;
-  };
+  enum { COLOR_STYLE_GRADIENT, COLOR_STYLE_GLOW } stype;
+  struct gradient gradient;
 };
 
 struct settings {

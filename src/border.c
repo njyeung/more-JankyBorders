@@ -102,16 +102,13 @@ static void border_draw(struct border* border, CGRect frame, struct settings* se
 
   CGGradientRef gradient = NULL;
   CGPoint gradient_dir[2];
-  if (color_style.stype == COLOR_STYLE_SOLID
-     || color_style.stype == COLOR_STYLE_GLOW) {
+  bool use_gradient_path = color_style.gradient.n_stops > 1;
+  if (!use_gradient_path) {
     bool glow = color_style.stype == COLOR_STYLE_GLOW;
-    drawing_set_stroke_and_fill(border->context, color_style.color, glow);
-  } else if (color_style.stype == COLOR_STYLE_GRADIENT) {
-    CGAffineTransform trans = CGAffineTransformMakeScale(frame.size.width,
-                                                         frame.size.height);
-    gradient = drawing_create_gradient(&color_style.gradient,
-                                       trans,
-                                       gradient_dir          );
+    drawing_set_stroke_and_fill(border->context, color_style.gradient.stops[0].color, glow);
+  } else {
+    CGAffineTransform trans = CGAffineTransformMakeScale(frame.size.width,frame.size.height);
+    gradient = drawing_create_gradient(&color_style.gradient,trans,gradient_dir);
   }
 
   CGContextSetLineWidth(border->context, settings->border_width);
@@ -139,13 +136,11 @@ static void border_draw(struct border* border, CGRect frame, struct settings* se
   drawing_clip_between_rect_and_path(border->context, frame, inner_clip_path);
 
   if (settings->border_style == BORDER_STYLE_SQUARE) {
-    if (color_style.stype == COLOR_STYLE_SOLID
-       || color_style.stype == COLOR_STYLE_GLOW) {
+    if (!use_gradient_path) {
       drawing_draw_square_with_inset(border->context,
                                      path_rect,
                                      -settings->border_width / 2.f);
-    }
-    else if (color_style.stype == COLOR_STYLE_GRADIENT) {
+    } else {
       drawing_draw_square_gradient_with_inset(border->context,
                                               gradient,
                                               gradient_dir,
@@ -162,13 +157,12 @@ static void border_draw(struct border* border, CGRect frame, struct settings* se
                                            true            );
     }
 
-    if (color_style.stype == COLOR_STYLE_SOLID
-       || color_style.stype == COLOR_STYLE_GLOW) {
+    if (!use_gradient_path) {
       drawing_draw_rounded_rect_with_inset(border->context,
                                            path_rect,
                                            corner_radius,
                                            false           );
-    } else if (color_style.stype == COLOR_STYLE_GRADIENT) {
+    } else {
       drawing_draw_rounded_gradient_with_inset(border->context,
                                                gradient,
                                                gradient_dir,
@@ -182,11 +176,10 @@ static void border_draw(struct border* border, CGRect frame, struct settings* se
     CGContextRestoreGState(border->context);
     CGContextSaveGState(border->context);
     color_style = settings->background;
-    if (color_style.stype == COLOR_STYLE_SOLID
-       || color_style.stype == COLOR_STYLE_GLOW) {
+    if (color_style.gradient.n_stops == 1) {
       drawing_draw_filled_path(border->context,
                                inner_clip_path,
-                               color_style.color);
+                               color_style.gradient.stops[0].color);
     }
   }
   CFRelease(inner_clip_path);

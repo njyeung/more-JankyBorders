@@ -29,32 +29,39 @@ static bool parse_list(struct table* list, char* token) {
 }
 
 static bool parse_color(struct color_style* style, char* token) {
-  if (sscanf(token, "=0x%x", &style->color) == 1) {
-    style->stype = COLOR_STYLE_SOLID;
+  uint32_t hex;
+  if (sscanf(token, "=0x%x", &hex) == 1) {
+    style->stype = COLOR_STYLE_GRADIENT;
+    style->gradient.angle    = 0.f;
+    style->gradient.n_stops  = 1;
+    style->gradient.stops[0] = (struct gradient_stop){ hex, 0.f };
     return true;
   }
-  else if (sscanf(token, "=glow(0x%x)", &style->color) == 1) {
+  if (sscanf(token, "=glow(0x%x)", &hex) == 1) {
     style->stype = COLOR_STYLE_GLOW;
+    style->gradient.angle    = 0.f;
+    style->gradient.n_stops  = 1;
+    style->gradient.stops[0] = (struct gradient_stop){ hex, 0.f };
     return true;
   }
-  else if (sscanf(token,
-             "=gradient(top_left=0x%x,bottom_right=0x%x)",
-             &style->gradient.color1,
-             &style->gradient.color2) == 2) {
+  uint32_t c1, c2;
+  if (sscanf(token, "=gradient(top_left=0x%x,bottom_right=0x%x)", &c1, &c2) == 2) {
     style->stype = COLOR_STYLE_GRADIENT;
-    style->gradient.direction = TL_TO_BR;
+    style->gradient.angle    = 315.f;
+    style->gradient.n_stops  = 2;
+    style->gradient.stops[0] = (struct gradient_stop){ c1, 0.f };
+    style->gradient.stops[1] = (struct gradient_stop){ c2, 1.f };
     return true;
   }
-  else if (sscanf(token,
-             "=gradient(top_right=0x%x,bottom_left=0x%x)",
-             &style->gradient.color1,
-             &style->gradient.color2) == 2) {
+  if (sscanf(token, "=gradient(top_right=0x%x,bottom_left=0x%x)", &c1, &c2) == 2) {
     style->stype = COLOR_STYLE_GRADIENT;
-    style->gradient.direction = TR_TO_BL;
+    style->gradient.angle    = 225.f;
+    style->gradient.n_stops  = 2;
+    style->gradient.stops[0] = (struct gradient_stop){ c1, 0.f };
+    style->gradient.stops[1] = (struct gradient_stop){ c2, 1.f };
     return true;
   }
-  else printf("[?] Borders: Invalid color argument color%s\n", token);
-
+  printf("[?] Borders: Invalid color argument color%s\n", token);
   return false;
 }
 
@@ -84,7 +91,7 @@ uint32_t parse_settings(struct settings* settings, int count, char** arguments) 
       if (parse_color(&settings->background,
                                  arguments[i] + strlen(background_color))) {
         update_mask |= BORDER_UPDATE_MASK_ALL;
-        settings->show_background = settings->background.color & 0xff000000;
+        settings->show_background = settings->background.gradient.stops[0].color & 0xff000000;
       }
     }
     else if (str_starts_with(arguments[i], blacklist)) {
