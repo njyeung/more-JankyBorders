@@ -22,19 +22,88 @@ static inline void colors_from_hex(uint32_t hex, float* a, float* r, float* g, f
   *b = ((hex >> 0) & 0xff) / 255.f;
 }
 
-// TODO: implement RGB <-> HSV conversion
-static inline void rgb_to_hsv(float r, float g, float b, float* h, float* s, float* v) {}
-static inline void hsv_to_rgb(float h, float s, float v, float* r, float* g, float* b) {}
+static inline void rgb_to_hsv(float r, float g, float b, float* h, float* s, float* v) {
+  float max = fmaxf(fmaxf(r, g), b);
+  float min = fminf(fminf(r, g), b);
+  float d = max - min;
+  *v = max;
+  *s = (max == 0.f) ? 0.f : d / max;
+  if (d == 0.f) {
+    *h = 0.f;
+  } else if (max == r) {
+    *h = ((g - b) / d + (g < b ? 6.f : 0.f)) / 6.f;
+  } else if (max == g) {
+    *h = ((b - r) / d + 2.f) / 6.f;
+  } else {
+    *h = ((r - g) / d + 4.f) / 6.f;
+  }
+}
 
-// TODO: implement RGB <-> HSL conversion
-static inline void rgb_to_hsl(float r, float g, float b, float* h, float* s, float* l) {}
-static inline void hsl_to_rgb(float h, float s, float l, float* r, float* g, float* b) {}
+static inline void hsv_to_rgb(float h, float s, float v, float* r, float* g, float* b) {
+  if (s == 0.f) { *r = *g = *b = v; return; }
+  h *= 6.f;
+  int   i = (int)h % 6;
+  float f = h - (int)h;
+  float p = v * (1.f - s);
+  float q = v * (1.f - s * f);
+  float t = v * (1.f - s * (1.f - f));
+  switch (i) {
+    case 0: *r = v; *g = t; *b = p; break;
+    case 1: *r = q; *g = v; *b = p; break;
+    case 2: *r = p; *g = v; *b = t; break;
+    case 3: *r = p; *g = q; *b = v; break;
+    case 4: *r = t; *g = p; *b = v; break;
+    case 5: *r = v; *g = p; *b = q; break;
+  }
+}
 
-// TODO: implement gradient angle <-> Points conversion
-// angle=0 == left to right; 
-// angle=90 == bottom to top. 
-// Points are in normalized [0,1]^2 space. Caller applies CGAffineTransform for the actual rect size. 
-static inline void gradient_angle_to_points(float angle_deg, CGPoint dir[2]) {}
+static inline void rgb_to_hsl(float r, float g, float b, float* h, float* s, float* l) {
+  float max = fmaxf(fmaxf(r, g), b);
+  float min = fminf(fminf(r, g), b);
+  *l = (max + min) / 2.f;
+  if (max == min) {
+    *h = *s = 0.f;
+  } else {
+    float d = max - min;
+    *s = (*l > 0.5f) ? d / (2.f - max - min) : d / (max + min);
+    if      (max == r) *h = ((g - b) / d + (g < b ? 6.f : 0.f)) / 6.f;
+    else if (max == g) *h = ((b - r) / d + 2.f) / 6.f;
+    else               *h = ((r - g) / d + 4.f) / 6.f;
+  }
+}
+
+static inline float hsl_hue_to_rgb(float p, float q, float t) {
+  if (t < 0.f) t += 1.f;
+  if (t > 1.f) t -= 1.f;
+  if (t < 1.f/6.f) return p + (q - p) * 6.f * t;
+  if (t < 1.f/2.f) return q;
+  if (t < 2.f/3.f) return p + (q - p) * (2.f/3.f - t) * 6.f;
+  return p;
+}
+
+static inline void hsl_to_rgb(float h, float s, float l, float* r, float* g, float* b) {
+  if (s == 0.f) {
+    *r = *g = *b = l;
+  } else {
+    float q = l < 0.5f ? l * (1.f + s) : l + s - l * s;
+    float p = 2.f * l - q;
+    *r = hsl_hue_to_rgb(p, q, h + 1.f/3.f);
+    *g = hsl_hue_to_rgb(p, q, h);
+    *b = hsl_hue_to_rgb(p, q, h - 1.f/3.f);
+  }
+}
+
+// angle=0 == left to right; angle=90 == bottom to top.
+// Points are in normalized [0,1]^2 space. Caller applies CGAffineTransform for the actual rect size.
+// Endpoints are projected to the square boundary so the full rect is covered at any angle.
+static inline void gradient_angle_to_points(float angle_deg, CGPoint dir[2]) {
+  float rad   = angle_deg * (float)M_PI / 180.f;
+  float cos_a = cosf(rad);
+  float sin_a = sinf(rad);
+  float t     = 0.5f * (fabsf(cos_a) + fabsf(sin_a));
+  dir[0] = CGPointMake(0.5f - t * cos_a, 0.5f - t * sin_a);
+  dir[1] = CGPointMake(0.5f + t * cos_a, 0.5f + t * sin_a);
+}
 
 static inline void drawing_set_fill(CGContextRef context, uint32_t color) {
   float a,r,g,b;

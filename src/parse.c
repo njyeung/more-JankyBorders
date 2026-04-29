@@ -28,6 +28,53 @@ static bool parse_list(struct table* list, char* token) {
   return entry_found;
 }
 
+// Parses the interior of gradient(...): angle first, then color stops.
+// Each stop is either 0xAARRGGBB or 0xAARRGGBB@position.
+// Stops without an explicit position are evenly distributed across 0..1.
+static bool parse_gradient_new(struct color_style* style, char* content) {
+  uint32_t content_len = strlen(content) + 1;
+  char buf[content_len];
+  memcpy(buf, content, content_len);
+
+  style->stype          = COLOR_STYLE_GRADIENT;
+  style->gradient.n_stops = 0;
+  style->gradient.angle   = 0.f;
+
+  char* cursor = buf;
+  char* part;
+  bool  angle_parsed = false;
+
+  while ((part = strsep(&cursor, ","))) {
+    if (strlen(part) == 0) continue;
+    if (!angle_parsed) {
+      style->gradient.angle = strtof(part, NULL);
+      angle_parsed = true;
+      continue;
+    }
+    if (style->gradient.n_stops >= GRADIENT_MAX_STOPS) break;
+    int      n = style->gradient.n_stops;
+    uint32_t color;
+    float    pos;
+    if (sscanf(part, "0x%x@%f", &color, &pos) == 2) {
+      style->gradient.stops[n] = (struct gradient_stop){ color, pos };
+    } else if (sscanf(part, "0x%x", &color) == 1) {
+      style->gradient.stops[n] = (struct gradient_stop){ color, -1.f };
+    } else {
+      return false;
+    }
+    style->gradient.n_stops++;
+  }
+
+  if (style->gradient.n_stops < 2) return false;
+
+  // Evenly distribute any stops that had no explicit position
+  for (int i = 0; i < style->gradient.n_stops; i++) {
+    if (style->gradient.stops[i].position < 0.f)
+      style->gradient.stops[i].position = (float)i / (float)(style->gradient.n_stops - 1);
+  }
+  return true;
+}
+
 static bool parse_color(struct color_style* style, char* token) {
   uint32_t hex;
   if (sscanf(token, "=0x%x", &hex) == 1) {
@@ -44,22 +91,17 @@ static bool parse_color(struct color_style* style, char* token) {
     style->gradient.stops[0] = (struct gradient_stop){ hex, 0.f };
     return true;
   }
-  uint32_t c1, c2;
-  if (sscanf(token, "=gradient(top_left=0x%x,bottom_right=0x%x)", &c1, &c2) == 2) {
-    style->stype = COLOR_STYLE_GRADIENT;
-    style->gradient.angle    = 315.f;
-    style->gradient.n_stops  = 2;
-    style->gradient.stops[0] = (struct gradient_stop){ c1, 0.f };
-    style->gradient.stops[1] = (struct gradient_stop){ c2, 1.f };
-    return true;
-  }
-  if (sscanf(token, "=gradient(top_right=0x%x,bottom_left=0x%x)", &c1, &c2) == 2) {
-    style->stype = COLOR_STYLE_GRADIENT;
-    style->gradient.angle    = 225.f;
-    style->gradient.n_stops  = 2;
-    style->gradient.stops[0] = (struct gradient_stop){ c1, 0.f };
-    style->gradient.stops[1] = (struct gradient_stop){ c2, 1.f };
-    return true;
+  // Angle-based multi-stop: gradient(<angle>,<color>,...[,<color>@<pos>,...])
+  static const char grad_prefix[] = "=gradient(";
+  static const uint32_t grad_prefix_len = sizeof(grad_prefix) - 1;
+  if (strlen(token) > grad_prefix_len
+      && strncmp(token, grad_prefix, grad_prefix_len) == 0) {
+    char* inner = token + grad_prefix_len;
+    char* close = strrchr(inner, ')');
+    if (close) {
+      *close = '\0';
+      if (parse_gradient_new(style, inner)) return true;
+    }
   }
   printf("[?] Borders: Invalid color argument color%s\n", token);
   return false;
